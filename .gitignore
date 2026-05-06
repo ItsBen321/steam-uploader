@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist-electron/
+dist-renderer/
+release/
+
+# Local logs
+*.log
+
+# Local OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local environment
+.env
+.env.*
+
+# Electron Builder
+*.blockmap

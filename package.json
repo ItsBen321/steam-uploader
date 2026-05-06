@@ -1,0 +1,84 @@
+{
+  "name": "steam-uploader",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Desktop helper for exporting Godot builds and uploading them to SteamPipe.",
+  "author": "Ben Heirbaut",
+  "license": "MIT",
+  "main": "dist-electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BenHeirbaut/steam-uploader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BenHeirbaut/steam-uploader/issues"
+  },
+  "homepage": "https://github.com/BenHeirbaut/steam-uploader#readme",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && npm run build:electron && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron dist-electron/main.js\"",
+    "build": "tsc --noEmit && vite build && npm run build:electron",
+    "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --target=node20 --format=cjs --outdir=dist-electron --external:electron --external:sql.js",
+    "dist": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable --publish never",
+    "dist:portable": "npm run dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.2",
+    "lucide-react": "^0.560.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.0.3",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/sql.js": "^1.4.11",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^39.8.10",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.27.2",
+    "jsdom": "^27.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0",
+    "vitest": "^4.0.16",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.steamuploader.app",
+    "productName": "Steam Uploader",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "dist-renderer/**/*",
+      "node_modules/sql.js/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/sql.js/dist/sql-wasm.wasm",
+        "to": "sql-wasm.wasm"
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Steam-Uploader-${version}-portable.${ext}"
+    }
+  }
+}
