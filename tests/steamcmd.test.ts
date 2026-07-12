@@ -1,4 +1,3 @@
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createSteamCmdInvocation,
@@ -10,7 +9,7 @@ import {
 describe("SteamCMD platform support", () => {
   it("derives the Windows SDK executable", () => {
     expect(deriveSteamCmdPath("C:\\sdk\\tools\\ContentBuilder", "win32")).toBe(
-      path.join("C:\\sdk\\tools\\ContentBuilder", "builder", "steamcmd.exe")
+      "C:\\sdk\\tools\\ContentBuilder\\builder\\steamcmd.exe"
     );
     expect(expectedSteamCmdLocation("win32")).toBe("ContentBuilder\\builder\\steamcmd.exe");
   });

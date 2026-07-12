@@ -11,21 +11,23 @@ export function steamCmdCandidates(contentBuilderPath: string, platform: NodeJS.
     return [];
   }
 
+  const platformPath = platform === "win32" ? path.win32 : path.posix;
+
   if (platform === "linux") {
     return [
-      path.join(contentBuilderPath, "builder_linux", "steamcmd.sh"),
-      path.join(contentBuilderPath, "builder_linux", "steamcmd")
+      platformPath.join(contentBuilderPath, "builder_linux", "steamcmd.sh"),
+      platformPath.join(contentBuilderPath, "builder_linux", "steamcmd")
     ];
   }
 
   if (platform === "darwin") {
     return [
-      path.join(contentBuilderPath, "builder_osx", "steamcmd.sh"),
-      path.join(contentBuilderPath, "builder_osx", "steamcmd")
+      platformPath.join(contentBuilderPath, "builder_osx", "steamcmd.sh"),
+      platformPath.join(contentBuilderPath, "builder_osx", "steamcmd")
     ];
   }
 
-  return [path.join(contentBuilderPath, "builder", "steamcmd.exe")];
+  return [platformPath.join(contentBuilderPath, "builder", "steamcmd.exe")];
 }
 
 export function deriveSteamCmdPath(contentBuilderPath: string, platform: NodeJS.Platform = process.platform): string {

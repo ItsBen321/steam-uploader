@@ -15,6 +15,7 @@ function tempRoot(): string {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
   for (const root of roots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -43,6 +44,7 @@ describe("SteamCMD login script", () => {
 
   it("writes an executable Linux script that runs the SDK wrapper through Bash", () => {
     const root = tempRoot();
+    const chmodSpy = vi.spyOn(fs, "chmodSync");
     const settings: Settings = {
       contentBuilderPath: path.join(root, "ContentBuilder"),
       steamCmdPath: path.join(root, "ContentBuilder", "builder_linux", "steamcmd.sh"),
@@ -60,7 +62,10 @@ describe("SteamCMD login script", () => {
     expect(script).toContain("#!/usr/bin/env bash");
     expect(script).toContain(`'bash' '${settings.steamCmdPath}' '+login' 'builder_account'`);
     expect(script).toContain("Press Enter to close this window");
-    expect(mode).toBe(0o700);
+    expect(chmodSpy).toHaveBeenCalledWith(scriptPath, 0o700);
+    if (process.platform !== "win32") {
+      expect(mode).toBe(0o700);
+    }
   });
 
   it("uses terminal-specific Linux command arguments", () => {
