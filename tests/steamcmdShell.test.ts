@@ -44,7 +44,6 @@ describe("SteamCMD login script", () => {
 
   it("writes an executable Linux script that runs the SDK wrapper through Bash", () => {
     const root = tempRoot();
-    const chmodSpy = vi.spyOn(fs, "chmodSync");
     const settings: Settings = {
       contentBuilderPath: path.join(root, "ContentBuilder"),
       steamCmdPath: path.join(root, "ContentBuilder", "builder_linux", "steamcmd.sh"),
@@ -53,6 +52,17 @@ describe("SteamCMD login script", () => {
       steamAccount: "builder_account",
       updatedAt: null
     };
+    const helperPaths = [
+      settings.steamCmdPath,
+      path.join(root, "ContentBuilder", "builder_linux", "linux32", "steamcmd"),
+      path.join(root, "ContentBuilder", "builder_linux", "linux32", "steamerrorreporter")
+    ];
+    for (const helperPath of helperPaths) {
+      fs.mkdirSync(path.dirname(helperPath), { recursive: true });
+      fs.writeFileSync(helperPath, "");
+      fs.chmodSync(helperPath, 0o600);
+    }
+    const chmodSpy = vi.spyOn(fs, "chmodSync");
 
     const scriptPath = createSteamCmdLoginScript(settings, path.join(root, "scripts"), "linux");
     const script = fs.readFileSync(scriptPath, "utf8");
@@ -63,8 +73,14 @@ describe("SteamCMD login script", () => {
     expect(script).toContain(`'bash' '${settings.steamCmdPath}' '+login' 'builder_account'`);
     expect(script).toContain("Press Enter to close this window");
     expect(chmodSpy).toHaveBeenCalledWith(scriptPath, 0o700);
+    for (const helperPath of helperPaths) {
+      expect(chmodSpy.mock.calls.some(([target, targetMode]) => target === helperPath && (Number(targetMode) & 0o100) !== 0)).toBe(true);
+    }
     if (process.platform !== "win32") {
       expect(mode).toBe(0o700);
+      for (const helperPath of helperPaths) {
+        expect(fs.statSync(helperPath).mode & 0o100).toBe(0o100);
+      }
     }
   });
 

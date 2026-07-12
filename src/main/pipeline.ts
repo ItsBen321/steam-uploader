@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseGodotExportPresets, findMissingExportPresets } from "../shared/godot";
 import { parseSteamLog } from "../shared/logParser";
-import { createSteamCmdInvocation } from "../shared/steamcmd";
+import { createSteamCmdInvocation, prepareSteamCmdForExecution, steamCmdRuntimeError } from "../shared/steamcmd";
 import type {
   AppSnapshot,
   GameProfile,
@@ -314,6 +314,16 @@ export class ReleasePipeline {
   }
 
   private async runSteamCmd(runId: string, context: ActiveRun, settings: Settings, appScriptPath: string): Promise<void> {
+    const repairedPaths = prepareSteamCmdForExecution(settings.steamCmdPath);
+    if (repairedPaths.length > 0) {
+      this.log(runId, "system", `Restored executable permissions for ${repairedPaths.length} SteamCMD file${repairedPaths.length === 1 ? "" : "s"}.`);
+    }
+
+    const runtimeError = steamCmdRuntimeError(settings.steamCmdPath);
+    if (runtimeError) {
+      throw new Error(runtimeError);
+    }
+
     const invocation = createSteamCmdInvocation(settings.steamCmdPath, [
       "+login",
       settings.steamAccount,

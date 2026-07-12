@@ -1,10 +1,16 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSteamCmdInvocation,
   deriveSteamCmdPath,
   expectedSteamCmdLocation,
-  steamCmdCandidates
+  steamCmdCandidates,
+  steamCmdRuntimeError
 } from "../src/shared/steamcmd";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("SteamCMD platform support", () => {
   it("derives the Windows SDK executable", () => {
@@ -36,5 +42,13 @@ describe("SteamCMD platform support", () => {
       command: "C:\\sdk\\builder\\steamcmd.exe",
       args: ["+quit"]
     });
+  });
+
+  it("explains when the Linux 32-bit runtime is missing", () => {
+    vi.spyOn(fs, "existsSync").mockImplementation((candidate) => String(candidate) !== "/lib/ld-linux.so.2");
+
+    expect(steamCmdRuntimeError("/sdk/builder_linux/steamcmd.sh", "linux")).toContain(
+      "SteamCMD requires the 32-bit Linux runtime"
+    );
   });
 });

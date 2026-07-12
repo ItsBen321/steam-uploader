@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { shell } from "electron";
 import type { Settings } from "../shared/types";
-import { createSteamCmdInvocation } from "../shared/steamcmd";
+import { createSteamCmdInvocation, prepareSteamCmdForExecution, steamCmdRuntimeError } from "../shared/steamcmd";
 
 function quoteBatch(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
@@ -54,6 +54,7 @@ export function createSteamCmdLoginScript(
   scriptsDir: string,
   platform: NodeJS.Platform = process.platform
 ): string {
+  prepareSteamCmdForExecution(settings.steamCmdPath, platform);
   fs.mkdirSync(scriptsDir, { recursive: true });
   const isWindows = platform === "win32";
   const scriptPath = path.join(scriptsDir, isWindows ? "steamcmd-login.cmd" : "steamcmd-login.sh");
@@ -133,7 +134,18 @@ export async function openSteamCmdLoginShell(
   scriptsDir: string,
   platform: NodeJS.Platform = process.platform
 ): Promise<string | null> {
-  const scriptPath = createSteamCmdLoginScript(settings, scriptsDir, platform);
+  let scriptPath: string;
+  try {
+    scriptPath = createSteamCmdLoginScript(settings, scriptsDir, platform);
+  } catch (error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  const runtimeError = steamCmdRuntimeError(settings.steamCmdPath, platform);
+  if (runtimeError) {
+    return runtimeError;
+  }
+
   if (platform === "win32") {
     const errorMessage = await shell.openPath(scriptPath);
     return errorMessage || null;

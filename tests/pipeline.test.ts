@@ -135,6 +135,10 @@ describe("release pipeline", () => {
 
     expect(completedRun?.buildId).toBe("456789");
     expect(completedRun?.manifestIds).toEqual(["98765432101234567"]);
+    if (process.platform === "linux") {
+      expect(fs.statSync(steamCmdPath).mode & 0o100).toBe(0o100);
+      expect(db.getLogs(run.id).some((log) => log.line.includes("Restored executable permissions"))).toBe(true);
+    }
 
     db.close();
   });
