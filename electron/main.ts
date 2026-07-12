@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { AppDatabase } from "../src/main/database";
 import { ReleasePipeline } from "../src/main/pipeline";
 import { openSteamCmdLoginShell } from "../src/main/steamcmdShell";
+import { expectedSteamCmdLocation } from "../src/shared/steamcmd";
 import type { PanelId, PanelWindowContext, PipelineEvent, SaveProfileInput, SaveSettingsInput, SelectPathOptions } from "../src/shared/types";
 
 let mainWindow: BrowserWindow | null = null;
@@ -144,7 +145,7 @@ function registerIpcHandlers(): void {
     if (!settings.contentBuilderPath.trim()) {
       return {
         ok: false,
-        error: "Select the Steamworks SDK tools\\ContentBuilder folder first. SteamCMD should be inside builder\\steamcmd.exe.",
+        error: `Select the Steamworks SDK tools/ContentBuilder folder first. SteamCMD should be at ${expectedSteamCmdLocation()}.`,
         snapshot
       };
     }
@@ -152,7 +153,7 @@ function registerIpcHandlers(): void {
     if (!settings.steamCmdPath || !fs.existsSync(settings.steamCmdPath)) {
       return {
         ok: false,
-        error: `SteamCMD was not found at ${settings.steamCmdPath || "ContentBuilder\\builder\\steamcmd.exe"}. Check that the ContentBuilder path points to the Steamworks SDK tools\\ContentBuilder folder.`,
+        error: `SteamCMD was not found at ${settings.steamCmdPath || expectedSteamCmdLocation()}. Check that the ContentBuilder path points to the Steamworks SDK tools/ContentBuilder folder.`,
         snapshot
       };
     }
@@ -169,7 +170,7 @@ function registerIpcHandlers(): void {
     if (openError) {
       return {
         ok: false,
-        error: `Windows did not open the SteamCMD login script: ${openError}`,
+        error: `Could not open the SteamCMD login terminal: ${openError}`,
         snapshot
       };
     }

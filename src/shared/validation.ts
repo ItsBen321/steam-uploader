@@ -1,14 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { GameProfile, Settings, ToolValidation } from "./types";
+import { expectedSteamCmdLocation } from "./steamcmd";
 
-export function deriveSteamCmdPath(contentBuilderPath: string): string {
-  if (!contentBuilderPath.trim()) {
-    return "";
-  }
-
-  return path.join(contentBuilderPath, "builder", "steamcmd.exe");
-}
+export { deriveSteamCmdPath } from "./steamcmd";
 
 export function validateTools(settings: Settings, options: { requireGodot?: boolean } = {}): ToolValidation {
   const requireGodot = options.requireGodot ?? true;
@@ -20,7 +15,7 @@ export function validateTools(settings: Settings, options: { requireGodot?: bool
   }
 
   if (!settings.steamCmdPath || !fs.existsSync(settings.steamCmdPath)) {
-    errors.push("SteamCMD was not found at ContentBuilder\\builder\\steamcmd.exe.");
+    errors.push(`SteamCMD was not found at ${expectedSteamCmdLocation()}.`);
   }
 
   if (requireGodot && (!settings.godotPath || !fs.existsSync(settings.godotPath))) {

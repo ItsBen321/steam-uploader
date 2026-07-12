@@ -118,7 +118,7 @@ function setupItems(settings: AppSettings) {
     {
       label: "SteamCMD",
       ok: Boolean(settings.steamCmdPath),
-      value: settings.steamCmdPath || "ContentBuilder\\builder\\steamcmd.exe"
+      value: settings.steamCmdPath || "Detected from ContentBuilder for this operating system"
     },
     {
       label: "Godot",
@@ -569,12 +569,12 @@ export default function App() {
           <div className="settings-grid">
             <FieldLabel
               title="ContentBuilder path"
-              help="Select the Steamworks SDK tools/ContentBuilder folder. SteamCMD is expected at builder/steamcmd.exe inside it."
+              help="Select the Steamworks SDK tools/ContentBuilder folder. SteamCMD is detected in builder/steamcmd.exe on Windows or builder_linux/steamcmd.sh on Linux."
             >
               <div className="path-input">
                 <input
                   aria-label="ContentBuilder path"
-                  placeholder="C:\\SteamworksSDK\\tools\\ContentBuilder"
+                  placeholder="/path/to/SteamworksSDK/tools/ContentBuilder"
                   value={settingsDraft.contentBuilderPath}
                   onChange={(event) => setSettingsDraft({ ...settingsDraft, contentBuilderPath: event.target.value })}
                 />
@@ -593,7 +593,7 @@ export default function App() {
               <div className="path-input">
                 <input
                   aria-label="Godot executable"
-                  placeholder="C:\\Tools\\Godot_v4.x-stable_win64.exe"
+                  placeholder="/path/to/godot"
                   value={settingsDraft.godotPath}
                   onChange={(event) => setSettingsDraft({ ...settingsDraft, godotPath: event.target.value })}
                 />
@@ -607,12 +607,12 @@ export default function App() {
             </FieldLabel>
             <FieldLabel
               title="Default export root"
-              help="Base folder for relative depot output paths. Example: C:\\Builds\\Steam."
+              help="Base folder for relative depot output paths, such as C:\\Builds\\Steam or /home/user/builds/steam."
             >
               <div className="path-input">
                 <input
                   aria-label="Default export root"
-                  placeholder="C:\\Builds\\Steam"
+                  placeholder="/path/to/builds/steam"
                   value={settingsDraft.defaultExportRoot}
                   onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultExportRoot: event.target.value })}
                 />
@@ -702,7 +702,7 @@ export default function App() {
               <div className="path-input">
                 <input
                   aria-label="Godot project"
-                  placeholder="C:\\Projects\\MyGame"
+                  placeholder="/path/to/MyGame"
                   value={profileDraft.godotProjectPath}
                   onChange={(event) => setProfileDraft({ ...profileDraft, godotProjectPath: event.target.value })}
                 />
@@ -775,7 +775,7 @@ export default function App() {
                 <input aria-label={`Depot ${index + 1} build note`} placeholder="Steam release, x64, public demo..." value={depot.buildNote} onChange={(event) => updateDepot(index, { buildNote: event.target.value })} />
                 <input aria-label={`Depot ${index + 1} depot ID`} placeholder="1234561" value={depot.depotId} onChange={(event) => updateDepot(index, { depotId: event.target.value })} />
                 <input aria-label={`Depot ${index + 1} preset`} list="godot-presets" placeholder={usesGodotExport ? "Windows Desktop" : "Not used"} value={depot.exportPreset} disabled={!usesGodotExport} onChange={(event) => updateDepot(index, { exportPreset: event.target.value })} />
-                <input aria-label={`Depot ${index + 1} output path`} placeholder={usesGodotExport ? "windows/game.exe" : "C:\\Builds\\MyGame\\windows"} value={depot.outputPath} onChange={(event) => updateDepot(index, { outputPath: event.target.value })} />
+                <input aria-label={`Depot ${index + 1} output path`} placeholder={usesGodotExport ? "windows/game.exe or linux/game.x86_64" : "/path/to/existing/build"} value={depot.outputPath} onChange={(event) => updateDepot(index, { outputPath: event.target.value })} />
                 <input aria-label={`Depot ${index + 1} Steam path`} placeholder="." value={depot.steamDepotPath} onChange={(event) => updateDepot(index, { steamDepotPath: event.target.value })} />
                 <label className="toggle-cell">
                   <input
@@ -795,7 +795,7 @@ export default function App() {
             <div><strong>Preset</strong><span>{usesGodotExport ? 'Exact Godot export preset name, usually "Windows Desktop". Use the Presets button after choosing the Godot project.' : "Not used when uploading an existing folder."}</span></div>
             <div><strong>{usesGodotExport ? "Output path" : "Source path"}</strong><span>{usesGodotExport ? "Where Godot writes the exported executable or folder. Relative paths are placed under the default export root." : "Folder or exported executable that already exists. The app uploads the containing folder without running Godot."}</span></div>
             <div><strong>Steam path</strong><span>Where files land inside the depot. Use "." for the depot root unless you need a subfolder.</span></div>
-            <div><strong>Recursive</strong><span>Keep enabled for normal Godot exports so the executable, PCK, DLLs, and subfolders are included.</span></div>
+            <div><strong>Recursive</strong><span>Keep enabled for normal Godot exports so the executable, PCK, libraries, and subfolders are included.</span></div>
           </div>
 
           <div className="profile-actions">

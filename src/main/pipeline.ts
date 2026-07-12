@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseGodotExportPresets, findMissingExportPresets } from "../shared/godot";
 import { parseSteamLog } from "../shared/logParser";
+import { createSteamCmdInvocation } from "../shared/steamcmd";
 import type {
   AppSnapshot,
   GameProfile,
@@ -313,11 +314,18 @@ export class ReleasePipeline {
   }
 
   private async runSteamCmd(runId: string, context: ActiveRun, settings: Settings, appScriptPath: string): Promise<void> {
+    const invocation = createSteamCmdInvocation(settings.steamCmdPath, [
+      "+login",
+      settings.steamAccount,
+      "+run_app_build",
+      appScriptPath,
+      "+quit"
+    ]);
     await this.runTool(
       runId,
       context,
-      settings.steamCmdPath,
-      ["+login", settings.steamAccount, "+run_app_build", appScriptPath, "+quit"],
+      invocation.command,
+      invocation.args,
       path.dirname(settings.steamCmdPath),
       "steamcmd"
     );

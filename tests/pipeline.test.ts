@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AppDatabase } from "../src/main/database";
 import { ReleasePipeline } from "../src/main/pipeline";
 import type { CommandRunner } from "../src/main/processRunner";
+import { createSteamCmdInvocation, deriveSteamCmdPath } from "../src/shared/steamcmd";
 
 const tempRoots: string[] = [];
 
@@ -32,11 +33,19 @@ async function waitFor<T>(read: () => T, predicate: (value: T) => boolean): Prom
   throw new Error("Timed out waiting for condition.");
 }
 
+function steamBuildScriptPath(command: string, args: string[], steamCmdPath: string): string {
+  const expectedInvocation = createSteamCmdInvocation(steamCmdPath, []);
+  expect(command).toBe(expectedInvocation.command);
+  const runBuildIndex = args.indexOf("+run_app_build");
+  expect(runBuildIndex).toBeGreaterThanOrEqual(0);
+  return args[runBuildIndex + 1];
+}
+
 describe("release pipeline", () => {
   it("exports, previews, then uploads to beta automatically", async () => {
     const root = makeTempRoot();
     const contentBuilder = path.join(root, "ContentBuilder");
-    const steamCmdPath = path.join(contentBuilder, "builder", "steamcmd.exe");
+    const steamCmdPath = deriveSteamCmdPath(contentBuilder);
     const godotPath = path.join(root, "Godot.exe");
     const projectPath = path.join(root, "Game");
     const exportRoot = path.join(root, "exports");
@@ -95,8 +104,8 @@ describe("release pipeline", () => {
         return { exitCode: 0, signal: null, lines: ["Godot export complete."] };
       }
 
-      if (command === steamCmdPath) {
-        const scriptPath = args[3];
+      if (command === createSteamCmdInvocation(steamCmdPath, []).command) {
+        const scriptPath = steamBuildScriptPath(command, args, steamCmdPath);
         steamScripts.push(fs.readFileSync(scriptPath, "utf8"));
         onLine("system", steamScripts.length === 1 ? "Steam preview complete." : "BuildID 456789 complete.");
         onLine("system", "Depot manifest id 98765432101234567.");
@@ -133,7 +142,7 @@ describe("release pipeline", () => {
   it("can upload without setting a beta branch live", async () => {
     const root = makeTempRoot();
     const contentBuilder = path.join(root, "ContentBuilder");
-    const steamCmdPath = path.join(contentBuilder, "builder", "steamcmd.exe");
+    const steamCmdPath = deriveSteamCmdPath(contentBuilder);
     const existingBuild = path.join(root, "existing-build", "windows");
     const appData = path.join(root, "app-data");
     fs.mkdirSync(path.dirname(steamCmdPath), { recursive: true });
@@ -171,8 +180,7 @@ describe("release pipeline", () => {
 
     const steamScripts: string[] = [];
     const runner: CommandRunner = async (command, args, _options, onLine) => {
-      expect(command).toBe(steamCmdPath);
-      steamScripts.push(fs.readFileSync(args[3], "utf8"));
+      steamScripts.push(fs.readFileSync(steamBuildScriptPath(command, args, steamCmdPath), "utf8"));
       onLine("system", steamScripts.length === 1 ? "Steam preview complete." : "BuildID 456789 complete.");
       return { exitCode: 0, signal: null, lines: [] };
     };
@@ -191,7 +199,7 @@ describe("release pipeline", () => {
   it("can skip Godot export and stage existing build files", async () => {
     const root = makeTempRoot();
     const contentBuilder = path.join(root, "ContentBuilder");
-    const steamCmdPath = path.join(contentBuilder, "builder", "steamcmd.exe");
+    const steamCmdPath = deriveSteamCmdPath(contentBuilder);
     const existingBuild = path.join(root, "existing-build", "windows");
     const appData = path.join(root, "app-data");
     fs.mkdirSync(path.dirname(steamCmdPath), { recursive: true });
@@ -230,8 +238,7 @@ describe("release pipeline", () => {
 
     const scriptKinds: string[] = [];
     const runner: CommandRunner = async (command, args, _options, onLine) => {
-      expect(command).toBe(steamCmdPath);
-      const scriptPath = args[3];
+      const scriptPath = steamBuildScriptPath(command, args, steamCmdPath);
       const script = fs.readFileSync(scriptPath, "utf8");
       scriptKinds.push(script.includes('"Preview" "1"') ? "preview" : "upload");
       onLine("system", "Steam preview complete.");
@@ -254,7 +261,7 @@ describe("release pipeline", () => {
   it("runs queued releases one at a time across profiles", async () => {
     const root = makeTempRoot();
     const contentBuilder = path.join(root, "ContentBuilder");
-    const steamCmdPath = path.join(contentBuilder, "builder", "steamcmd.exe");
+    const steamCmdPath = deriveSteamCmdPath(contentBuilder);
     const firstBuild = path.join(root, "first-build");
     const secondBuild = path.join(root, "second-build");
     const appData = path.join(root, "app-data");
@@ -318,11 +325,10 @@ describe("release pipeline", () => {
     let maxActiveCommands = 0;
     const callOrder: string[] = [];
     const runner: CommandRunner = async (command, args, _options, onLine) => {
-      expect(command).toBe(steamCmdPath);
       activeCommands += 1;
       maxActiveCommands = Math.max(maxActiveCommands, activeCommands);
       try {
-        const script = fs.readFileSync(args[3], "utf8");
+        const script = fs.readFileSync(steamBuildScriptPath(command, args, steamCmdPath), "utf8");
         const app = script.includes('"AppID" "111111"') ? "first" : "second";
         const phase = script.includes('"Preview" "1"') ? "preview" : "upload";
         callOrder.push(`${app}:${phase}`);
@@ -351,7 +357,7 @@ describe("release pipeline", () => {
   it("stops pending queued releases after an error", async () => {
     const root = makeTempRoot();
     const contentBuilder = path.join(root, "ContentBuilder");
-    const steamCmdPath = path.join(contentBuilder, "builder", "steamcmd.exe");
+    const steamCmdPath = deriveSteamCmdPath(contentBuilder);
     const firstBuild = path.join(root, "first-build");
     const secondBuild = path.join(root, "second-build");
     const appData = path.join(root, "app-data");
@@ -412,8 +418,8 @@ describe("release pipeline", () => {
     });
 
     const calls: string[] = [];
-    const runner: CommandRunner = async (_command, args) => {
-      const script = fs.readFileSync(args[3], "utf8");
+    const runner: CommandRunner = async (command, args) => {
+      const script = fs.readFileSync(steamBuildScriptPath(command, args, steamCmdPath), "utf8");
       calls.push(script.includes('"AppID" "111111"') ? "first" : "second");
       await new Promise((resolve) => setTimeout(resolve, 25));
       return { exitCode: 6, signal: null, lines: [] };
