@@ -20,26 +20,31 @@ function createWindowsLoginScript(settings: Settings): string[] {
     "title SteamCMD Login",
     `cd /d ${quoteBatch(workingDir)}`,
     "echo Opening SteamCMD login shell.",
-    "echo Complete SteamGuard here if prompted, then close this window when finished.",
+    "echo Complete SteamGuard here if prompted. SteamCMD will then exit and save its login token.",
+    "echo Keep this window open until SteamCMD has exited.",
     "echo.",
-    `${quoteBatch(settings.steamCmdPath)} +login ${quoteBatch(settings.steamAccount)}`,
+    `${quoteBatch(settings.steamCmdPath)} +login ${quoteBatch(settings.steamAccount)} +quit`,
+    'set "steamcmd_status=%ERRORLEVEL%"',
     "echo.",
-    "echo SteamCMD exited with code %ERRORLEVEL%.",
+    "echo SteamCMD exited with code %steamcmd_status%.",
     "pause",
+    "exit /b %steamcmd_status%",
     ""
   ];
 }
 
 function createPosixLoginScript(settings: Settings, platform: NodeJS.Platform): string[] {
   const workingDir = path.dirname(settings.steamCmdPath);
-  const invocation = createSteamCmdInvocation(settings.steamCmdPath, ["+login", settings.steamAccount], platform);
+  // SteamCMD must quit normally to persist its login token (see Steamworks' CI/CD login procedure).
+  const invocation = createSteamCmdInvocation(settings.steamCmdPath, ["+login", settings.steamAccount, "+quit"], platform);
   const command = [invocation.command, ...invocation.args].map(quoteShell).join(" ");
 
   return [
     "#!/usr/bin/env bash",
     `cd -- ${quoteShell(workingDir)} || exit 1`,
     "printf '%s\\n' 'Opening SteamCMD login shell.'",
-    "printf '%s\\n\\n' 'Complete SteamGuard here if prompted, then close this window when finished.'",
+    "printf '%s\\n' 'Complete SteamGuard here if prompted. SteamCMD will then exit and save its login token.'",
+    "printf '%s\\n\\n' 'Keep this window open until SteamCMD has exited.'",
     command,
     "status=$?",
     "printf '\\nSteamCMD exited with code %s.\\n' \"$status\"",
