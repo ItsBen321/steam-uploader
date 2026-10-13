@@ -386,7 +386,7 @@ export default function App() {
         setNotice({ kind: "error", text: result.error ?? "SteamCMD login shell could not be opened." });
         return;
       }
-      setNotice({ kind: "ok", text: "SteamCMD login shell opened. Complete SteamGuard there, then return to this app." });
+      setNotice({ kind: "ok", text: "SteamCMD login shell opened. Complete SteamGuard there and wait for SteamCMD to exit so it can save your login, then return to this app." });
     } catch (error) {
       setNotice({ kind: "error", text: error instanceof Error ? error.message : String(error) });
     } finally {

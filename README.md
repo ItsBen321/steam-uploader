@@ -18,6 +18,8 @@ chmod +x Steam-Uploader-*-linux-x86_64.AppImage
 
 On Linux, select the Steamworks SDK `tools/ContentBuilder` folder containing `builder_linux/steamcmd.sh`. The terminal login button supports common terminal emulators and honors `STEAM_UPLOADER_TERMINAL` when set.
 
+Use the terminal button beside your Steam account to log in and complete SteamGuard once. Wait for SteamCMD to exit before closing the terminal; it quits automatically to save its login token. Later uploads reuse that token without asking for your password. Keep the selected SDK folder and its SteamCMD `config/config.vdf` between runs, as described in [Valve's login caching instructions](https://partner.steamgames.com/doc/sdk/uploading).
+
 ### Running from source
 
 On Windows, double-click `Launch Steam Uploader.cmd`. It starts the app without requiring you to open a terminal first.
