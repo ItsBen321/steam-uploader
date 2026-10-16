@@ -13,7 +13,7 @@ function quoteShell(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function createWindowsLoginScript(settings: Settings): string[] {
+function createWindowsLoginScript(settings: Settings, resultPath?: string): string[] {
   const workingDir = path.dirname(settings.steamCmdPath);
   return [
     "@echo off",
@@ -25,6 +25,7 @@ function createWindowsLoginScript(settings: Settings): string[] {
     "echo.",
     `${quoteBatch(settings.steamCmdPath)} +login ${quoteBatch(settings.steamAccount)} +quit`,
     'set "steamcmd_status=%ERRORLEVEL%"',
+    ...(resultPath ? [`> ${quoteBatch(resultPath)} echo %steamcmd_status%`] : []),
     "echo.",
     "echo SteamCMD exited with code %steamcmd_status%.",
     "pause",
@@ -33,7 +34,7 @@ function createWindowsLoginScript(settings: Settings): string[] {
   ];
 }
 
-function createPosixLoginScript(settings: Settings, platform: NodeJS.Platform): string[] {
+function createPosixLoginScript(settings: Settings, platform: NodeJS.Platform, resultPath?: string): string[] {
   const workingDir = path.dirname(settings.steamCmdPath);
   // SteamCMD must quit normally to persist its login token (see Steamworks' CI/CD login procedure).
   const invocation = createSteamCmdInvocation(settings.steamCmdPath, ["+login", settings.steamAccount, "+quit"], platform);
@@ -47,6 +48,7 @@ function createPosixLoginScript(settings: Settings, platform: NodeJS.Platform): 
     "printf '%s\\n\\n' 'Keep this window open until SteamCMD has exited.'",
     command,
     "status=$?",
+    ...(resultPath ? [`printf '%s\\n' "$status" > ${quoteShell(resultPath)}`] : []),
     "printf '\\nSteamCMD exited with code %s.\\n' \"$status\"",
     "read -r -p 'Press Enter to close this window...' _",
     "exit \"$status\"",
@@ -57,13 +59,14 @@ function createPosixLoginScript(settings: Settings, platform: NodeJS.Platform): 
 export function createSteamCmdLoginScript(
   settings: Settings,
   scriptsDir: string,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  resultPath?: string
 ): string {
   prepareSteamCmdForExecution(settings.steamCmdPath, platform);
   fs.mkdirSync(scriptsDir, { recursive: true });
   const isWindows = platform === "win32";
   const scriptPath = path.join(scriptsDir, isWindows ? "steamcmd-login.cmd" : "steamcmd-login.sh");
-  const lines = isWindows ? createWindowsLoginScript(settings) : createPosixLoginScript(settings, platform);
+  const lines = isWindows ? createWindowsLoginScript(settings, resultPath) : createPosixLoginScript(settings, platform, resultPath);
 
   fs.writeFileSync(scriptPath, lines.join(isWindows ? "\r\n" : "\n"), {
     encoding: "utf8",
@@ -137,11 +140,18 @@ function launchDetached(command: TerminalCommand, cwd: string): Promise<string |
 export async function openSteamCmdLoginShell(
   settings: Settings,
   scriptsDir: string,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  onLoginSuccess?: () => void
 ): Promise<string | null> {
   let scriptPath: string;
+  let resultPath: string | undefined;
   try {
-    scriptPath = createSteamCmdLoginScript(settings, scriptsDir, platform);
+    if (onLoginSuccess) {
+      fs.mkdirSync(scriptsDir, { recursive: true });
+      scriptsDir = fs.mkdtempSync(path.join(scriptsDir, "login-"));
+      resultPath = path.join(scriptsDir, "result.txt");
+    }
+    scriptPath = createSteamCmdLoginScript(settings, scriptsDir, platform, resultPath);
   } catch (error: unknown) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -151,19 +161,50 @@ export async function openSteamCmdLoginShell(
     return runtimeError;
   }
 
-  if (platform === "win32") {
-    const errorMessage = await shell.openPath(scriptPath);
-    return errorMessage || null;
-  }
-
-  if (platform !== "linux") {
+  if (platform !== "linux" && platform !== "win32") {
     return `SteamCMD login terminals are not supported on ${platform}. Run ${scriptPath} manually.`;
   }
 
-  const terminal = linuxTerminalCommands(scriptPath).find(({ command }) => executableOnPath(command));
-  if (!terminal) {
+  const terminal = platform === "linux" ? linuxTerminalCommands(scriptPath).find(({ command }) => executableOnPath(command)) : null;
+  if (platform === "linux" && !terminal) {
     return `No supported terminal emulator was found. Run ${scriptPath} manually or set STEAM_UPLOADER_TERMINAL.`;
   }
 
-  return launchDetached(terminal, path.dirname(settings.steamCmdPath));
+  // Terminal launchers can return before SteamCMD exits. The script reports the
+  // result after SteamCMD saves its token, before waiting for the window to close.
+  let stopWatching = () => {};
+  if (resultPath && onLoginSuccess) {
+    const completionPath = resultPath;
+    const poll = setInterval(() => {
+      let result: string;
+      try {
+        result = fs.readFileSync(completionPath, "utf8").trim();
+      } catch {
+        return;
+      }
+      if (!/^\d+$/.test(result)) return;
+      stopWatching();
+      fs.rmSync(completionPath, { force: true });
+      if (Number(result) === 0) onLoginSuccess();
+    }, 500);
+    // Abandoned login windows must not leave a watcher alive indefinitely.
+    const timeout = setTimeout(() => stopWatching(), 24 * 60 * 60 * 1000);
+    poll.unref?.();
+    timeout.unref?.();
+    stopWatching = () => {
+      clearInterval(poll);
+      clearTimeout(timeout);
+    };
+  }
+
+  try {
+    const error = platform === "win32"
+      ? await shell.openPath(scriptPath)
+      : await launchDetached(terminal!, path.dirname(settings.steamCmdPath));
+    if (error) stopWatching();
+    return error || null;
+  } catch (error: unknown) {
+    stopWatching();
+    return error instanceof Error ? error.message : String(error);
+  }
 }

@@ -166,7 +166,12 @@ function registerIpcHandlers(): void {
       };
     }
 
-    const openError = await openSteamCmdLoginShell(settings, path.join(app.getPath("userData"), "scripts"));
+    const openError = await openSteamCmdLoginShell(
+      settings,
+      path.join(app.getPath("userData"), "scripts"),
+      process.platform,
+      () => pipeline.resumeAfterSteamLogin()
+    );
     if (openError) {
       return {
         ok: false,
@@ -198,6 +203,15 @@ function registerIpcHandlers(): void {
 app.whenReady().then(async () => {
   const appDataPath = app.getPath("userData");
   database = await AppDatabase.open(path.join(appDataPath, "steam-uploader.sqlite"));
+  // Processes from a previous app session cannot still be owned by this queue.
+  for (const run of database.getRuns()) {
+    if (run.status === "running" || run.status === "queued" || run.status === "awaiting_login") {
+      database.updateRun(run.id, {
+        status: "failed", stage: "failed", finishedAt: new Date().toISOString(),
+        error: "Steam Uploader closed before this run finished. Check Steamworks before retrying."
+      });
+    }
+  }
   pipeline = new ReleasePipeline(database, appDataPath, sendPipelineEvent);
   registerIpcHandlers();
   await createWindow();

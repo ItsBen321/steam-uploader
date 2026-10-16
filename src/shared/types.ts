@@ -5,12 +5,13 @@ export type RunStage =
   | "staging"
   | "previewing"
   | "awaiting_confirmation"
+  | "awaiting_login"
   | "uploading"
   | "completed"
   | "failed"
   | "cancelled";
 
-export type RunStatus = "idle" | "queued" | "running" | "awaiting_confirmation" | "completed" | "failed" | "cancelled";
+export type RunStatus = "idle" | "queued" | "running" | "awaiting_confirmation" | "awaiting_login" | "completed" | "failed" | "cancelled";
 
 export type LogSource = "system" | "godot" | "steamcmd" | "stderr";
 

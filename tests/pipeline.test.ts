@@ -41,7 +41,97 @@ function steamBuildScriptPath(command: string, args: string[], steamCmdPath: str
   return args[runBuildIndex + 1];
 }
 
+async function loginFixture(runner: CommandRunner) {
+  const root = makeTempRoot();
+  const contentBuilder = path.join(root, "ContentBuilder");
+  const steamCmdPath = deriveSteamCmdPath(contentBuilder);
+  const source = path.join(root, "build");
+  fs.mkdirSync(path.dirname(steamCmdPath), { recursive: true });
+  fs.mkdirSync(source, { recursive: true });
+  fs.writeFileSync(steamCmdPath, "");
+  fs.writeFileSync(path.join(source, "game.exe"), "original build");
+  const db = await AppDatabase.open(path.join(root, "test.sqlite"));
+  db.saveSettings({ contentBuilderPath: contentBuilder, godotPath: "", defaultExportRoot: "", steamAccount: "builder" });
+  const profile = db.saveProfile({
+    name: "Game", buildMode: "existing_folder", steamAppId: "123456",
+    godotProjectPath: "", testBranch: "beta", buildDescriptionTemplate: "{game}",
+    depots: [{
+      depotId: "123457", buildNote: "", exportPreset: "", outputPath: source,
+      platformLabel: "Windows", steamDepotPath: ".", recursive: true, sortOrder: 0
+    }]
+  });
+  const pipeline = new ReleasePipeline(db, path.join(root, "app-data"), () => undefined, runner);
+  return { root, source, db, profile, pipeline };
+}
+
 describe("release pipeline", () => {
+  it.each([
+    { phase: "preview", exitCode: 5, stderr: false },
+    { phase: "upload", exitCode: 5, stderr: true },
+    { phase: "preview", exitCode: 0, stderr: true },
+    { phase: "upload", exitCode: 0, stderr: false }
+  ])("resumes $phase after login (exit $exitCode, stderr $stderr) and preserves the queue", async ({ phase, exitCode, stderr }) => {
+    const calls: string[] = [];
+    let failed = false;
+    const f = await loginFixture(async (_command, args, _options, onLine) => {
+      const scriptPath = args[args.indexOf("+run_app_build") + 1];
+      const script = fs.readFileSync(scriptPath, "utf8");
+      const step = script.includes('"Preview" "1"') ? "preview" : "upload";
+      calls.push(scriptPath);
+      if (step === phase && !failed) {
+        failed = true;
+        onLine(stderr ? "stderr" : "system", "Login Failure: Account Login Denied - SteamGuard");
+        return { exitCode, signal: null, lines: [] };
+      }
+      onLine("system", "BuildID 456789 complete.");
+      return { exitCode: 0, signal: null, lines: [] };
+    });
+    const run = f.pipeline.startRelease(f.profile.id);
+    const next = f.pipeline.startRelease(f.profile.id);
+    const paused = await waitFor(() => f.db.getRun(run.id), (value) => value?.status === "awaiting_login");
+    expect(paused?.finishedAt).toBeNull();
+    expect(paused?.error).toContain("resume automatically");
+    expect(f.db.getRun(next.id)?.status).toBe("queued");
+    const callsBeforeLogin = calls.length;
+    const pausedScript = calls.at(-1);
+    // The retry must reuse the original staged files and scripts.
+    fs.writeFileSync(path.join(f.source, "game.exe"), "new build");
+    f.pipeline.resumeAfterSteamLogin();
+    f.pipeline.resumeAfterSteamLogin();
+    const completed = await waitFor(() => f.db.getRun(run.id), (value) => value?.status === "completed");
+    await waitFor(() => f.db.getRun(next.id), (value) => value?.status === "completed");
+    expect(calls).toHaveLength(5);
+    expect(calls[callsBeforeLogin]).toBe(pausedScript);
+    expect(fs.readFileSync(path.join(f.root, "app-data", "release-runs", run.id, "content", "depot_123457", "game.exe"), "utf8")).toBe("original build");
+    expect(fs.readFileSync(completed!.uploadScriptPath!, "utf8")).toContain('"SetLive" "beta"');
+    expect(completed?.error).toBeNull();
+    expect(completed?.buildId).toBe("456789");
+    f.pipeline.resumeAfterSteamLogin();
+    expect(calls).toHaveLength(5);
+    f.db.close();
+  });
+
+  it("keeps waiting if the refreshed login still fails, and allows cancellation", async () => {
+    let calls = 0;
+    const f = await loginFixture(async () => {
+      calls++;
+      return { exitCode: 5, signal: null, lines: ["ERROR (Invalid Password)"] };
+    });
+    const run = f.pipeline.startRelease(f.profile.id);
+    const next = f.pipeline.startRelease(f.profile.id);
+    await waitFor(() => f.db.getRun(run.id), (value) => value?.status === "awaiting_login");
+    expect(calls).toBe(1);
+    f.pipeline.resumeAfterSteamLogin();
+    await waitFor(() => calls === 2 && f.db.getRun(run.id)?.status === "awaiting_login", Boolean);
+    expect(f.db.getRun(next.id)?.status).toBe("queued");
+    f.pipeline.cancelRun(run.id);
+    await waitFor(() => f.db.getRun(next.id), (value) => value?.status === "cancelled");
+    expect(f.db.getRun(run.id)?.status).toBe("cancelled");
+    f.pipeline.resumeAfterSteamLogin();
+    expect(calls).toBe(2);
+    f.db.close();
+  });
+
   it("exports, previews, then uploads to beta automatically", async () => {
     const root = makeTempRoot();
     const contentBuilder = path.join(root, "ContentBuilder");

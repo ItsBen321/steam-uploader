@@ -20,6 +20,8 @@ On Linux, select the Steamworks SDK `tools/ContentBuilder` folder containing `bu
 
 Use the terminal button beside your Steam account to log in and complete SteamGuard once. Wait for SteamCMD to exit before closing the terminal; it quits automatically to save its login token. Later uploads reuse that token without asking for your password. Keep the selected SDK folder and its SteamCMD `config/config.vdf` between runs, as described in [Valve's login caching instructions](https://partner.steamgames.com/doc/sdk/uploading).
 
+If your cached login expires during a release, the run shows **Waiting for Steam login** and keeps the remaining uploads queued. Click **Log in to Steam** on the paused run (or the terminal button beside your account), complete login, and wait for SteamCMD to exit. The app automatically retries the paused preview or upload using the files already staged, then continues the queue. Keep Steam Uploader open while signing in.
+
 ### Running from source
 
 On Windows, double-click `Launch Steam Uploader.cmd`. It starts the app without requiring you to open a terminal first.

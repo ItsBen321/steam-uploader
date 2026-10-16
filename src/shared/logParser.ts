@@ -2,7 +2,11 @@ export interface ParsedSteamLog {
   buildId: string | null;
   manifestIds: string[];
   diagnosis: string | null;
+  loginRequired: boolean;
 }
+
+const loginFailurePattern = /Login Failure|Account Log(?:in|on) Denied|Invalid Password|No cached credentials|Cached credentials.*(?:expired|invalid)|Steam ?Guard.*(?:required|failed|denied)|(?:enter|provide).*Steam ?Guard.*code|(?:not logged (?:in|on))/i;
+const loginFailureMessage = "Steam login failed. Open the SteamCMD login shell and complete SteamGuard authentication.";
 
 const failureRules: Array<{ pattern: RegExp; message: string }> = [
   {
@@ -14,8 +18,8 @@ const failureRules: Array<{ pattern: RegExp; message: string }> = [
     message: "Steam created the depot manifests but failed the final app build commit. If the upload script has SetLive, check that the beta branch exists, is published, and the account can set builds live; otherwise retry because this can also be a Steam backend commit failure."
   },
   {
-    pattern: /Login Failure|Account Login Denied|SteamGuard/i,
-    message: "Steam login failed. Open the SteamCMD login shell and complete SteamGuard authentication."
+    pattern: loginFailurePattern,
+    message: loginFailureMessage
   },
   {
     pattern: /Failed to get application info/i,
@@ -39,8 +43,10 @@ export function parseSteamLog(lines: string[]): ParsedSteamLog {
   const manifestIds = new Set<string>();
   let buildId: string | null = null;
   let diagnosis: string | null = null;
+  let loginRequired = false;
 
   for (const line of lines) {
+    loginRequired ||= loginFailurePattern.test(line);
     const buildMatch =
       line.match(/\bBuildID\b[^0-9]*(\d{3,})/i) ??
       line.match(/\bBuild\s+(\d{3,})\s+(?:complete|finished|done)/i) ??
@@ -62,6 +68,7 @@ export function parseSteamLog(lines: string[]): ParsedSteamLog {
   return {
     buildId,
     manifestIds: [...manifestIds],
-    diagnosis
+    diagnosis: loginRequired ? loginFailureMessage : diagnosis,
+    loginRequired
   };
 }

@@ -126,6 +126,24 @@ describe("App renderer", () => {
     expect(screen.queryByText("Delete profile")).not.toBeInTheDocument();
   });
 
+  it("offers login and cancellation for a paused upload and prevents a duplicate run", async () => {
+    const api = installApi({ settings, profiles: [profile()], runs: [{
+      id: "paused-run", profileId: "profile-1", status: "awaiting_login", stage: "awaiting_login",
+      startedAt: "2026-05-03T10:00:00.000Z", finishedAt: null,
+      previewScriptPath: null, uploadScriptPath: null, buildId: null, manifestIds: [],
+      error: "Waiting for Steam login."
+    }] });
+    render(<App />);
+    const login = await screen.findByRole("button", { name: "Log in to Steam" });
+    expect(screen.getAllByText("Waiting for Steam login")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Queue run" })).toBeDisabled();
+    fireEvent.click(login);
+    await waitFor(() => expect(api.openSteamCmdLoginShell).toHaveBeenCalled());
+    expect(await screen.findByText(/Paused uploads and the remaining queue will resume automatically/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(api.cancelRun).toHaveBeenCalledWith("paused-run");
+  });
+
   it("keeps a saved profile selected and allows deleting it", async () => {
     const api = installApi({ settings, profiles: [], runs: [] });
     render(<App />);

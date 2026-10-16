@@ -102,6 +102,9 @@ function formatDate(value: string | null): string {
 }
 
 function runLabel(run: ReleaseRun): string {
+  if (run.status === "awaiting_login") {
+    return "Waiting for Steam login";
+  }
   if (run.status === "awaiting_confirmation") {
     return "Waiting to upload";
   }
@@ -201,7 +204,7 @@ export default function App() {
   );
   const activeRun = useMemo(
     () =>
-      selectedRuns.find((run) => run.status === "running" || run.status === "awaiting_confirmation") ??
+      selectedRuns.find((run) => run.status === "running" || run.status === "awaiting_confirmation" || run.status === "awaiting_login") ??
       selectedRuns.find((run) => run.status === "queued") ??
       null,
     [selectedRuns]
@@ -386,7 +389,7 @@ export default function App() {
         setNotice({ kind: "error", text: result.error ?? "SteamCMD login shell could not be opened." });
         return;
       }
-      setNotice({ kind: "ok", text: "SteamCMD login shell opened. Complete SteamGuard there and wait for SteamCMD to exit so it can save your login, then return to this app." });
+      setNotice({ kind: "ok", text: "SteamCMD login shell opened. Complete SteamGuard there and wait for SteamCMD to exit. Paused uploads and the remaining queue will resume automatically." });
     } catch (error) {
       setNotice({ kind: "error", text: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -813,6 +816,12 @@ export default function App() {
         <section className="run-panel resizable-panel">
           {panelHeading("runs", <Clock size={18} />)}
           <div className="run-controls">
+            {activeRun?.status === "awaiting_login" && (
+              <button className="ghost-button" onClick={openLoginShell} disabled={busy}>
+                <Terminal size={15} />
+                Log in to Steam
+              </button>
+            )}
             {activeRun && (
               <button className="danger-button" onClick={() => window.steamUploader.cancelRun(activeRun.id)}>
                 <Square size={15} />

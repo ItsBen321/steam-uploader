@@ -11,11 +11,28 @@ describe("SteamCMD log parsing", () => {
     expect(parsed.buildId).toBe("456789");
     expect(parsed.manifestIds).toEqual(["98765432101234567"]);
     expect(parsed.diagnosis).toBeNull();
+    expect(parsed.loginRequired).toBe(false);
   });
 
   it("diagnoses SteamGuard login failures", () => {
     const parsed = parseSteamLog(["Login Failure: Account Login Denied - SteamGuard"]);
     expect(parsed.diagnosis).toContain("Steam login failed");
+    expect(parsed.loginRequired).toBe(true);
+  });
+
+  it.each([
+    "Logging in user 'builder' to Steam Public...ERROR (Invalid Password)",
+    "ERROR! Not logged on",
+    "No cached credentials available.",
+    "Please enter the Steam Guard code from your email."
+  ])("recognizes login recovery for %s", (line) => {
+    expect(parseSteamLog([line]).loginRequired).toBe(true);
+  });
+
+  it("does not treat a SteamGuard informational message or depot permission error as a login failure", () => {
+    const parsed = parseSteamLog(["Loading SteamGuard data.", "Logged in OK", "Access Denied"]);
+    expect(parsed.loginRequired).toBe(false);
+    expect(parsed.diagnosis).toContain("Steam denied this depot build");
   });
 
   it("diagnoses SteamPipe access denied depot builds", () => {

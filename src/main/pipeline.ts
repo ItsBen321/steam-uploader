@@ -22,9 +22,12 @@ class CancelledError extends Error {
   }
 }
 
+class SteamLoginRequiredError extends Error {}
+
 interface ActiveRun {
   abortController: AbortController;
   steamLines: string[];
+  resumeAfterLogin?: () => void;
 }
 
 export class ReleasePipeline {
@@ -75,6 +78,12 @@ export class ReleasePipeline {
     void this.executeConfirmedUpload(runId, context);
 
     return this.updateRun(runId, { status: "running", stage: "uploading", error: null });
+  }
+
+  resumeAfterSteamLogin(): void {
+    if (this.activeRunId) {
+      this.activeRuns.get(this.activeRunId)?.resumeAfterLogin?.();
+    }
   }
 
   cancelRun(runId: string): ReleaseRun {
@@ -314,6 +323,48 @@ export class ReleasePipeline {
   }
 
   private async runSteamCmd(runId: string, context: ActiveRun, settings: Settings, appScriptPath: string): Promise<void> {
+    const stage = this.db.getRun(runId)!.stage;
+    while (true) {
+      this.assertNotCancelled(context);
+      context.steamLines = [];
+      try {
+        await this.executeSteamCmd(runId, context, settings, appScriptPath);
+        return;
+      } catch (error: unknown) {
+        if (!(error instanceof SteamLoginRequiredError)) throw error;
+        await this.waitForSteamLogin(runId, context);
+        this.assertNotCancelled(context);
+        settings = this.db.getSettings();
+        this.updateRun(runId, { status: "running", stage, error: null });
+        this.log(runId, "system", "SteamCMD login finished. Retrying the paused SteamPipe step.");
+      }
+    }
+  }
+
+  private waitForSteamLogin(runId: string, context: ActiveRun): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const signal = context.abortController.signal;
+      const cleanup = () => {
+        delete context.resumeAfterLogin;
+        signal.removeEventListener("abort", abort);
+      };
+      const abort = () => {
+        cleanup();
+        reject(new CancelledError());
+      };
+      context.resumeAfterLogin = () => {
+        cleanup();
+        resolve();
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      const message = "Waiting for Steam login. Open the SteamCMD login shell and sign in; this run and the remaining queue will resume automatically.";
+      this.updateRun(runId, { status: "awaiting_login", stage: "awaiting_login", error: message });
+      this.log(runId, "system", message);
+      if (signal.aborted) abort();
+    });
+  }
+
+  private async executeSteamCmd(runId: string, context: ActiveRun, settings: Settings, appScriptPath: string): Promise<void> {
     const repairedPaths = prepareSteamCmdForExecution(settings.steamCmdPath);
     if (repairedPaths.length > 0) {
       this.log(runId, "system", `Restored executable permissions for ${repairedPaths.length} SteamCMD file${repairedPaths.length === 1 ? "" : "s"}.`);
@@ -356,7 +407,7 @@ export class ReleasePipeline {
       { cwd, signal: context.abortController.signal },
       (source, line) => {
         const mappedSource: LogSource = source === "stderr" ? "stderr" : label;
-        if (label === "steamcmd" && mappedSource !== "stderr") {
+        if (label === "steamcmd") {
           context.steamLines.push(line);
         }
         this.log(runId, mappedSource, line);
@@ -365,8 +416,11 @@ export class ReleasePipeline {
 
     this.assertNotCancelled(context);
 
+    const parsed = label === "steamcmd" ? parseSteamLog(context.steamLines.concat(result.lines)) : null;
+    if (parsed?.loginRequired) {
+      throw new SteamLoginRequiredError(parsed.diagnosis!);
+    }
     if (result.exitCode !== 0) {
-      const parsed = label === "steamcmd" ? parseSteamLog(context.steamLines.concat(result.lines)) : null;
       throw new Error(parsed?.diagnosis ?? `${label} exited with code ${result.exitCode ?? "unknown"}.`);
     }
   }

@@ -608,7 +608,8 @@ input:disabled {
   background: #fff9e6;
 }
 
-.run-card.awaiting_confirmation {
+.run-card.awaiting_confirmation,
+.run-card.awaiting_login {
   border-color: #d7bc75;
   background: #fff9e6;
 }

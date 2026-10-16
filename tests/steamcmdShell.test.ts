@@ -4,7 +4,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Settings } from "../src/shared/types";
-import { createSteamCmdLoginScript, linuxTerminalCommands } from "../src/main/steamcmdShell";
+import { shell } from "electron";
+import { createSteamCmdLoginScript, linuxTerminalCommands, openSteamCmdLoginShell } from "../src/main/steamcmdShell";
+
+vi.mock("electron", () => ({ shell: { openPath: vi.fn() } }));
 
 const roots: string[] = [];
 
@@ -15,6 +18,7 @@ function tempRoot(): string {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   for (const root of roots.splice(0)) {
@@ -34,13 +38,16 @@ describe("SteamCMD login script", () => {
       updatedAt: null
     };
 
-    const scriptPath = createSteamCmdLoginScript(settings, path.join(root, "scripts"), "win32");
+    const resultPath = path.join(root, "result.txt");
+    const scriptPath = createSteamCmdLoginScript(settings, path.join(root, "scripts"), "win32", resultPath);
     const script = fs.readFileSync(scriptPath, "utf8");
 
     expect(scriptPath.endsWith("steamcmd-login.cmd")).toBe(true);
     expect(script).toContain("title SteamCMD Login");
     expect(script).toContain(`"${settings.steamCmdPath}" +login "builder_account" +quit`);
     expect(script).toContain("pause");
+    expect(script).toContain(`> "${resultPath}" echo %steamcmd_status%`);
+    expect(script.indexOf(`> "${resultPath}"`)).toBeLessThan(script.indexOf("pause"));
   });
 
   it("writes an executable Linux script that runs the SDK wrapper through Bash", () => {
@@ -106,16 +113,59 @@ describe("SteamCMD login script", () => {
         "printf '%s' 'SteamCMD finished' > finished.txt",
         `exit ${exitCode}`
       ].join("\n"));
-      const scriptPath = createSteamCmdLoginScript(settings, path.join(root, "scripts"), "linux");
+      const resultPath = path.join(root, "login result.txt");
+      const scriptPath = createSteamCmdLoginScript(settings, path.join(root, "scripts"), "linux", resultPath);
 
       const result = spawnSync("bash", [scriptPath], { input: "\n", encoding: "utf8", timeout: 5000 });
 
       expect(result.error).toBeUndefined();
       expect(result.status).toBe(exitCode);
+      expect(fs.readFileSync(resultPath, "utf8").trim()).toBe(String(exitCode));
       expect(fs.readFileSync(path.join(builderDir, "finished.txt"), "utf8")).toBe("SteamCMD finished");
       expect(result.stdout).toContain(`SteamCMD exited with code ${exitCode}.`);
     }
   );
+
+  it.each([0, 5])("only resumes after the login script reports success (exit %i)", async (exitCode) => {
+    vi.useFakeTimers();
+    const root = tempRoot();
+    const settings: Settings = {
+      contentBuilderPath: root,
+      steamCmdPath: path.join(root, "steamcmd.exe"),
+      godotPath: "",
+      defaultExportRoot: "",
+      steamAccount: "builder_account",
+      updatedAt: null
+    };
+    vi.mocked(shell.openPath).mockResolvedValue("");
+    const onSuccess = vi.fn();
+    expect(await openSteamCmdLoginShell(settings, path.join(root, "scripts"), "win32", onSuccess)).toBeNull();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onSuccess).not.toHaveBeenCalled();
+
+    const scriptPath = vi.mocked(shell.openPath).mock.lastCall![0];
+    const resultPath = path.join(path.dirname(scriptPath), "result.txt");
+    fs.writeFileSync(resultPath, String(exitCode));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(onSuccess).toHaveBeenCalledTimes(exitCode === 0 ? 1 : 0);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onSuccess).toHaveBeenCalledTimes(exitCode === 0 ? 1 : 0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("stops monitoring when the login terminal cannot open", async () => {
+    vi.useFakeTimers();
+    const root = tempRoot();
+    vi.mocked(shell.openPath).mockResolvedValue("Terminal unavailable");
+    const onSuccess = vi.fn();
+    const error = await openSteamCmdLoginShell({
+      contentBuilderPath: root, steamCmdPath: path.join(root, "steamcmd.exe"),
+      godotPath: "", defaultExportRoot: "", steamAccount: "builder", updatedAt: null
+    }, path.join(root, "scripts"), "win32", onSuccess);
+    expect(error).toBe("Terminal unavailable");
+    expect(vi.getTimerCount()).toBe(0);
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
 
   it("uses terminal-specific Linux command arguments", () => {
     vi.stubEnv("STEAM_UPLOADER_TERMINAL", "");
